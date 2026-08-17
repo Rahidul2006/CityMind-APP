@@ -80,3 +80,8 @@ data class ResolutionVerificationRequest(
     @SerializedName("resolved") val resolved: Boolean,
     @SerializedName("message") val message: String
 )
+
+data class StatusUpdateRequest(
+    @SerializedName("status") val status: String,
+    @SerializedName("message") val message: String
+)

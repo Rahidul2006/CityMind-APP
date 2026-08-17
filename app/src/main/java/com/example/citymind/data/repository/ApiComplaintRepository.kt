@@ -125,7 +125,15 @@ class ApiComplaintRepository : ComplaintRepository {
     }
 
     override suspend fun updateComplaintStatus(id: String, status: ComplaintStatus, note: String?) {
-        // Status updates can be called via backend dashboard, client delegates to verifyResolution
+        try {
+            val req = com.example.citymind.data.remote.dtos.StatusUpdateRequest(
+                status = status.name,
+                message = note ?: "Status updated to ${status.name}"
+            )
+            apiService.updateComplaintStatus(id, req)
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
     }
 
     override suspend fun verifyResolution(id: String, verified: Boolean, message: String): Result<Complaint> {

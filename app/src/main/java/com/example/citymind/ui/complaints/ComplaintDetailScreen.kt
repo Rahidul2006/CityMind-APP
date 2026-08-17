@@ -36,9 +36,19 @@ fun ComplaintDetailScreen(
     navController: NavController,
     viewModel: ComplaintViewModel
 ) {
-    val complaint by viewModel.getComplaintById(id).collectAsState()
+    val complaintState by viewModel.currentDetailComplaint.collectAsState()
+    val fallbackComplaint by viewModel.getComplaintById(id).collectAsState()
+    val complaint = complaintState ?: fallbackComplaint
+
     val verificationMsg by viewModel.verificationMessage.collectAsState()
     val context = LocalContext.current
+
+    DisposableEffect(id) {
+        viewModel.startListeningToComplaint(id)
+        onDispose {
+            viewModel.stopListeningToComplaint()
+        }
+    }
 
     LaunchedEffect(verificationMsg) {
         verificationMsg?.let { msg ->

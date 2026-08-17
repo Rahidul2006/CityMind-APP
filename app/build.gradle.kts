@@ -70,6 +70,7 @@ dependencies {
     implementation(libs.retrofit.converter.gson)
     implementation(libs.okhttp.core)
     implementation(libs.okhttp.logging)
+    implementation(libs.socket.io.client)
 
     // Room
     implementation(libs.androidx.room.runtime)

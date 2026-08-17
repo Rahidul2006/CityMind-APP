@@ -11,3 +11,4 @@
         <domain includeSubdomains="true">10.215.225.105</domain>
     </domain-config>
 </network-security-config>
+                           

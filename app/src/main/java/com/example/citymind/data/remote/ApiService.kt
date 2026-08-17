@@ -46,4 +46,10 @@ interface ApiService {
         @Path("id") id: String,
         @Body request: ResolutionVerificationRequest
     ): Response<ApiResponse<ComplaintDto>>
+
+    @PATCH("complaints/{id}/status")
+    suspend fun updateComplaintStatus(
+        @Path("id") id: String,
+        @Body request: com.example.citymind.data.remote.dtos.StatusUpdateRequest
+    ): Response<ApiResponse<ComplaintDto>>
 }
