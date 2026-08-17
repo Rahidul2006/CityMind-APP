@@ -1,5 +1,6 @@
 package com.example.citymind.ui.report
 
+import android.content.Context
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -35,14 +36,15 @@ fun ReportScreen(
     viewModel: ReportViewModel
 ) {
     val uiState by viewModel.uiState.collectAsState()
-    
+    val context = LocalContext.current
+
     Scaffold(
         topBar = {
             TopAppBar(
                 title = { Text("Report Issue") },
                 navigationIcon = {
                     if (uiState.currentStep != ReportStep.CATEGORY && uiState.currentStep != ReportStep.SUBMITTED) {
-                        IconButton(onClick = { /* Handle back or reset */ }) {
+                        IconButton(onClick = { viewModel.reset() }) {
                             Icon(Icons.Default.ArrowBack, contentDescription = "Back")
                         }
                     }
@@ -70,7 +72,7 @@ fun ReportScreen(
                     )
                     ReportStep.REVIEW -> ReviewStep(
                         uiState = uiState,
-                        onSubmit = viewModel::submitComplaint
+                        onSubmit = { viewModel.submitComplaint(context) }
                     )
                     ReportStep.SUBMITTED -> SuccessStep(
                         complaintId = uiState.submittedComplaintId ?: "",
@@ -82,6 +84,42 @@ fun ReportScreen(
                         }
                     )
                 }
+            }
+
+            // Loading overlay during Cloudinary upload & MongoDB creation
+            if (uiState.isSubmitting) {
+                Surface(
+                    modifier = Modifier.fillMaxSize(),
+                    color = MaterialTheme.colorScheme.surface.copy(alpha = 0.9f)
+                ) {
+                    Column(
+                        modifier = Modifier.fillMaxSize(),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.Center
+                    ) {
+                        CircularProgressIndicator(modifier = Modifier.size(64.dp))
+                        Spacer(Modifier.height(24.dp))
+                        Text(
+                            uiState.submitStatusMessage.ifEmpty { "Submitting complaint to CityMind Backend..." },
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                }
+            }
+
+            // Error dialog / banner
+            uiState.errorMessage?.let { error ->
+                AlertDialog(
+                    onDismissRequest = { },
+                    title = { Text("Submission Error") },
+                    text = { Text(error) },
+                    confirmButton = {
+                        TextButton(onClick = { viewModel.proceedToReview() }) {
+                            Text("Retry")
+                        }
+                    }
+                )
             }
         }
     }
@@ -138,7 +176,7 @@ fun CategoryCard(title: String, icon: ImageVector, onClick: () -> Unit) {
 @Composable
 fun PhotoStep(onPhotoCaptured: (Uri) -> Unit) {
     var isUsingCamera by remember { mutableStateOf(false) }
-    
+
     val launcher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
         uri?.let { onPhotoCaptured(it) }
     }
@@ -188,22 +226,23 @@ fun LocationStep(
     Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
         Text("Verify Location", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
         Spacer(Modifier.height(16.dp))
-        
+
         if (isCapturing) {
             CircularProgressIndicator(modifier = Modifier.align(Alignment.CenterHorizontally))
-            Text("Getting your exact location...", modifier = Modifier.align(Alignment.CenterHorizontally))
+            Spacer(Modifier.height(8.dp))
+            Text("Getting your exact GPS location...", modifier = Modifier.align(Alignment.CenterHorizontally))
         } else {
             Box(modifier = Modifier.weight(1f).fillMaxWidth().background(LightGray)) {
                 Column(modifier = Modifier.align(Alignment.Center), horizontalAlignment = Alignment.CenterHorizontally) {
                     Icon(Icons.Default.LocationOn, contentDescription = null, tint = DangerRed, modifier = Modifier.size(48.dp))
-                    Text("Interactive Map View")
-                    Text("Center: ${reportedLocation?.latitude ?: 0.0}, ${reportedLocation?.longitude ?: 0.0}")
+                    Text("GPS Coordinates Location", fontWeight = FontWeight.Bold)
+                    Text("${reportedLocation?.latitude ?: 0.0}, ${reportedLocation?.longitude ?: 0.0}")
                 }
             }
-            
+
             Spacer(Modifier.height(16.dp))
             LocationInfoCard(capturedLocation)
-            
+
             Spacer(Modifier.height(16.dp))
             Button(
                 onClick = onProceed,
@@ -222,12 +261,12 @@ fun LocationInfoCard(location: LocationData?) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Icon(Icons.Default.LocationOn, contentDescription = null, tint = Blue)
                 Spacer(Modifier.width(8.dp))
-                Text("📍 GPS Location Captured", fontWeight = FontWeight.Bold)
+                Text("📍 REAL GPS Coordinates Captured", fontWeight = FontWeight.Bold)
             }
             Spacer(Modifier.height(8.dp))
             Text("Latitude: ${location?.latitude ?: "N/A"}")
             Text("Longitude: ${location?.longitude ?: "N/A"}")
-            Text("Accuracy: ${location?.accuracy?.toInt() ?: "N/A"} meters")
+            Text("GPS Accuracy: ${location?.accuracy?.toInt() ?: "N/A"} meters")
         }
     }
 }
@@ -242,7 +281,8 @@ fun AIStep(isAnalyzing: Boolean) {
         if (isAnalyzing) {
             CircularProgressIndicator(modifier = Modifier.size(64.dp))
             Spacer(Modifier.height(24.dp))
-            Text("🤖 CityMind AI is analyzing your image...", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+            Text("🤖 AI Analysis in Progress...", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+            Text("Analyzing severity & recommended priority", style = MaterialTheme.typography.bodyMedium)
         }
     }
 }
@@ -260,8 +300,8 @@ fun DetailsStep(
             value = description,
             onValueChange = onDescriptionChanged,
             modifier = Modifier.fillMaxWidth().weight(1f),
-            placeholder = { Text("Example: Large pothole near the main junction. Vehicles are having difficulty avoiding it.") },
-            label = { Text("Details") }
+            placeholder = { Text("Example: Deep pothole causing traffic congestion near main road.") },
+            label = { Text("Description Details") }
         )
         Spacer(Modifier.height(16.dp))
         Button(
@@ -279,28 +319,27 @@ fun ReviewStep(uiState: com.example.citymind.viewmodel.ReportUiState, onSubmit: 
     Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
         Text("Review Your Report", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
         Spacer(Modifier.height(16.dp))
-        
+
         Card(modifier = Modifier.weight(1f).fillMaxWidth()) {
             Column(modifier = Modifier.padding(16.dp).verticalScroll(rememberScrollState())) {
-                ReviewItem("Issue", uiState.category ?: "N/A")
-                ReviewItem("Location", "Mock Address, City")
+                ReviewItem("Category", uiState.category ?: "N/A")
                 ReviewItem("Coordinates", "${uiState.reportedLocation?.latitude}, ${uiState.reportedLocation?.longitude}")
-                ReviewItem("Accuracy", "${uiState.reportedLocation?.accuracy?.toInt()}m")
-                ReviewItem("AI Detection", uiState.aiAnalysis?.detectedIssue ?: "N/A")
-                ReviewItem("Severity", uiState.aiAnalysis?.severity ?: "N/A")
-                ReviewItem("Priority", uiState.aiAnalysis?.recommendedPriority ?: "N/A")
+                ReviewItem("GPS Accuracy", "${uiState.reportedLocation?.accuracy?.toInt()}m")
+                ReviewItem("AI Category", uiState.aiAnalysis?.detectedIssue ?: "N/A")
+                ReviewItem("AI Severity", uiState.aiAnalysis?.severity ?: "HIGH")
+                ReviewItem("Recommended Priority", uiState.aiAnalysis?.recommendedPriority ?: "NORMAL")
                 Spacer(Modifier.height(16.dp))
                 Text("Description:", fontWeight = FontWeight.Bold)
                 Text(uiState.description)
             }
         }
-        
+
         Spacer(Modifier.height(16.dp))
         Button(
             onClick = onSubmit,
             modifier = Modifier.fillMaxWidth().height(56.dp)
         ) {
-            Text("SUBMIT COMPLAINT")
+            Text("SUBMIT TO CITYMIND BACKEND")
         }
     }
 }
@@ -326,7 +365,7 @@ fun SuccessStep(complaintId: String, onBackToHome: () -> Unit) {
         Spacer(Modifier.height(16.dp))
         Card(modifier = Modifier.fillMaxWidth()) {
             Column(modifier = Modifier.padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                Text("Complaint ID", style = MaterialTheme.typography.labelMedium)
+                Text("Backend Complaint ID", style = MaterialTheme.typography.labelMedium)
                 Text(complaintId, style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.ExtraBold, color = Blue)
             }
         }
@@ -335,7 +374,7 @@ fun SuccessStep(complaintId: String, onBackToHome: () -> Unit) {
             onClick = onBackToHome,
             modifier = Modifier.fillMaxWidth().height(56.dp)
         ) {
-            Text("Back to Home")
+            Text("Back to My Complaints")
         }
     }
 }

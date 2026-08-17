@@ -1,5 +1,6 @@
 package com.example.citymind.viewmodel
 
+import android.content.Context
 import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -34,13 +35,13 @@ class ReportViewModel(
     private fun captureLocation() {
         viewModelScope.launch {
             val location = locationService.getCurrentLocation()
-            _uiState.update { 
+            _uiState.update {
                 it.copy(
                     capturedLocation = location,
                     reportedLocation = location,
                     isCapturingLocation = false,
                     currentStep = ReportStep.LOCATION
-                ) 
+                )
             }
         }
     }
@@ -58,12 +59,12 @@ class ReportViewModel(
         viewModelScope.launch {
             val category = _uiState.value.category ?: "Other"
             val analysis = aiService.analyzeImage(_uiState.value.imageUri.toString(), category)
-            _uiState.update { 
+            _uiState.update {
                 it.copy(
                     aiAnalysis = analysis,
                     isAnalyzing = false,
                     currentStep = ReportStep.DETAILS
-                ) 
+                )
             }
         }
     }
@@ -76,25 +77,53 @@ class ReportViewModel(
         _uiState.update { it.copy(currentStep = ReportStep.REVIEW) }
     }
 
-    fun submitComplaint() {
-        viewModelScope.launch {
-            val state = _uiState.value
-            val complaint = Complaint(
-                complaintId = "CM-2026-${(100000..999999).random()}",
-                category = state.category ?: "",
-                description = state.description,
-                imageUri = state.imageUri?.toString(),
-                capturedLocation = state.capturedLocation ?: LocationData(0.0, 0.0),
-                reportedLocation = state.reportedLocation ?: LocationData(0.0, 0.0),
-                locationSource = state.locationSource,
-                address = "Mock Address, City", // Should be reverse geocoded
-                aiAnalysis = state.aiAnalysis ?: AIAnalysis("", 0f, "", "", ""),
-                status = ComplaintStatus.SUBMITTED,
-                statusHistory = listOf(StatusHistory(ComplaintStatus.SUBMITTED, System.currentTimeMillis())),
-                createdAt = System.currentTimeMillis()
+    fun submitComplaint(context: Context) {
+        val state = _uiState.value
+        val uri = state.imageUri ?: return
+
+        _uiState.update {
+            it.copy(
+                isSubmitting = true,
+                submitStatusMessage = "Uploading evidence to Cloudinary...",
+                errorMessage = null
             )
-            repository.createComplaint(complaint)
-            _uiState.update { it.copy(submittedComplaintId = complaint.complaintId, currentStep = ReportStep.SUBMITTED) }
+        }
+
+        viewModelScope.launch {
+            val capLoc = state.capturedLocation ?: LocationData(0.0, 0.0)
+            val repLoc = state.reportedLocation ?: capLoc
+
+            val result = repository.createComplaint(
+                context = context,
+                imageUri = uri,
+                category = state.category ?: "Civic Issue",
+                description = state.description,
+                latitude = capLoc.latitude,
+                longitude = capLoc.longitude,
+                gpsAccuracy = capLoc.accuracy ?: 5f,
+                capturedAt = capLoc.timestamp ?: System.currentTimeMillis(),
+                reportedLatitude = repLoc.latitude,
+                reportedLongitude = repLoc.longitude,
+                locationSource = state.locationSource,
+                address = "GPS Coordinates: ${repLoc.latitude}, ${repLoc.longitude}"
+            )
+
+            result.onSuccess { createdComplaint ->
+                _uiState.update {
+                    it.copy(
+                        isSubmitting = false,
+                        submittedComplaintId = createdComplaint.complaintId,
+                        currentStep = ReportStep.SUBMITTED
+                    )
+                }
+            }.onFailure { error ->
+                _uiState.update {
+                    it.copy(
+                        isSubmitting = false,
+                        errorMessage = error.localizedMessage ?: "Unable to submit complaint. Please check your internet connection and try again."
+                    )
+                }
+            }
         }
     }
 
@@ -114,6 +143,9 @@ data class ReportUiState(
     val aiAnalysis: AIAnalysis? = null,
     val isAnalyzing: Boolean = false,
     val description: String = "",
+    val isSubmitting: Boolean = false,
+    val submitStatusMessage: String = "",
+    val errorMessage: String? = null,
     val submittedComplaintId: String? = null
 )
 

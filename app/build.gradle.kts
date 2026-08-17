@@ -63,9 +63,13 @@ dependencies {
     // Coil
     implementation(libs.coil.compose)
 
-    // Serialization
+    // Serialization & Retrofit Networking
     implementation(libs.kotlinx.serialization.json)
     implementation(libs.kotlinx.coroutines.play.services)
+    implementation(libs.retrofit.core)
+    implementation(libs.retrofit.converter.gson)
+    implementation(libs.okhttp.core)
+    implementation(libs.okhttp.logging)
 
     // Room
     implementation(libs.androidx.room.runtime)

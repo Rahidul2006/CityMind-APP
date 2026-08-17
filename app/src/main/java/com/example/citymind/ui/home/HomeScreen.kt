@@ -12,10 +12,12 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
+import coil.compose.AsyncImage
 import com.example.citymind.ui.navigation.Screen
 import com.example.citymind.viewmodel.ComplaintViewModel
 import com.example.citymind.models.ComplaintStatus
@@ -26,7 +28,7 @@ fun HomeScreen(
     viewModel: ComplaintViewModel
 ) {
     val complaints by viewModel.complaints.collectAsState()
-    
+
     val resolvedCount = complaints.count { it.status == ComplaintStatus.RESOLVED }
     val inProgressCount = complaints.count { it.status == ComplaintStatus.IN_PROGRESS || it.status == ComplaintStatus.ASSIGNED }
     val submittedCount = complaints.size
@@ -40,17 +42,17 @@ fun HomeScreen(
         item {
             Header()
         }
-        
+
         item {
             ReportCTA {
                 navController.navigate(Screen.Report.route)
             }
         }
-        
+
         item {
             Statistics(submittedCount, resolvedCount, inProgressCount)
         }
-        
+
         item {
             Text(
                 text = "Recent Complaints",
@@ -58,10 +60,10 @@ fun HomeScreen(
                 fontWeight = FontWeight.Bold
             )
         }
-        
+
         if (complaints.isEmpty()) {
             item {
-                Text("No complaints yet. Report your first issue!")
+                Text("No complaints yet. Report your first civic issue!")
             }
         } else {
             items(complaints.size) { index ->
@@ -168,19 +170,31 @@ fun ComplaintCard(complaint: com.example.citymind.models.Complaint, onClick: () 
             verticalAlignment = Alignment.CenterVertically
         ) {
             Surface(
-                modifier = Modifier.size(60.dp),
+                modifier = Modifier.size(64.dp),
                 shape = MaterialTheme.shapes.medium,
                 color = MaterialTheme.colorScheme.primaryContainer
             ) {
-                // Icon based on category or placeholder
+                if (!complaint.imageUri.isNullOrEmpty()) {
+                    AsyncImage(
+                        model = complaint.imageUri,
+                        contentDescription = "Cloudinary Image",
+                        modifier = Modifier.fillMaxSize(),
+                        contentScale = ContentScale.Crop
+                    )
+                } else {
+                    Box(contentAlignment = Alignment.Center) {
+                        Text(complaint.category.take(2).uppercase(), fontWeight = FontWeight.Bold)
+                    }
+                }
             }
             Spacer(Modifier.width(16.dp))
-            Column {
+            Column(modifier = Modifier.weight(1f)) {
                 Text(text = complaint.category, fontWeight = FontWeight.Bold)
-                Text(text = complaint.address, style = MaterialTheme.typography.bodySmall)
+                Text(text = complaint.complaintId, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
                 Text(
-                    text = "Status: ${complaint.status}",
+                    text = "Status: ${complaint.status.name.replace("_", " ")}",
                     color = MaterialTheme.colorScheme.primary,
+                    style = MaterialTheme.typography.bodySmall,
                     fontWeight = FontWeight.SemiBold
                 )
             }
