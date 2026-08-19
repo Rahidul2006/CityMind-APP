@@ -32,7 +32,7 @@ class MainActivity : ComponentActivity() {
             Manifest.permission.ACCESS_COARSE_LOCATION
         ))
 
-        // Replace Mock Repository with real Express + MongoDB + Cloudinary backend API repository
+        // Real Express + MongoDB + Cloudinary backend API repository
         val repository = ApiComplaintRepository()
         val locationService = LocationService(this)
         val aiService = MockAIService()

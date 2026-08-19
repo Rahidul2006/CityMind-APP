@@ -85,3 +85,16 @@ data class StatusUpdateRequest(
     @SerializedName("status") val status: String,
     @SerializedName("message") val message: String
 )
+
+data class ConfigDto(
+    @SerializedName("googleMapsApiKey") val googleMapsApiKey: String? = null
+)
+
+data class AIAnalysisRequest(
+    @SerializedName("category") val category: String
+)
+
+data class AIAnalysisResponse(
+    @SerializedName("success") val success: Boolean = false,
+    @SerializedName("aiAnalysis") val aiAnalysis: AIAnalysisDto? = null
+)

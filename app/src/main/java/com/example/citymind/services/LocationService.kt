@@ -29,7 +29,8 @@ class LocationService(private val context: Context) {
                     timestamp = it.time
                 )
             }
-        } catch (e: Exception) {
+        } catch (t: Throwable) {
+            android.util.Log.e("LocationService", "Error fetching location", t)
             null
         }
     }

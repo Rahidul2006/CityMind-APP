@@ -52,4 +52,12 @@ interface ApiService {
         @Path("id") id: String,
         @Body request: com.example.citymind.data.remote.dtos.StatusUpdateRequest
     ): Response<ApiResponse<ComplaintDto>>
+
+    @GET("config")
+    suspend fun getConfig(): Response<com.example.citymind.data.remote.dtos.ConfigDto>
+
+    @POST("complaints/analyze")
+    suspend fun analyzeComplaint(
+        @Body request: com.example.citymind.data.remote.dtos.AIAnalysisRequest
+    ): Response<com.example.citymind.data.remote.dtos.AIAnalysisResponse>
 }

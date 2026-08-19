@@ -21,6 +21,12 @@
         android:usesCleartextTraffic="true"
         android:networkSecurityConfig="@xml/network_security_config"
         android:theme="@style/Theme.Citymind">
+
+        <!-- Mandatory Google Maps API Key -->
+        <meta-data
+            android:name="com.google.android.geo.API_KEY"
+            android:value="Enter your api" />
+
         <activity
             android:name=".MainActivity"
             android:exported="true"

@@ -2,6 +2,7 @@ package com.example.citymind.viewmodel
 
 import android.content.Context
 import android.net.Uri
+import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.citymind.data.repository.ComplaintRepository
@@ -28,20 +29,34 @@ class ReportViewModel(
     }
 
     fun onPhotoCaptured(uri: Uri) {
-        _uiState.update { it.copy(imageUri = uri, isCapturingLocation = true) }
+        _uiState.update { it.copy(imageUri = uri, isCapturingLocation = true, isUploadingProof = true) }
         captureLocation()
     }
 
     private fun captureLocation() {
         viewModelScope.launch {
-            val location = locationService.getCurrentLocation()
-            _uiState.update {
-                it.copy(
-                    capturedLocation = location,
-                    reportedLocation = location,
-                    isCapturingLocation = false,
-                    currentStep = ReportStep.LOCATION
-                )
+            try {
+                Log.d("ReportViewModel", "Starting GPS capture...")
+                val location = locationService.getCurrentLocation()
+                _uiState.update {
+                    it.copy(
+                        capturedLocation = location,
+                        reportedLocation = location,
+                        isCapturingLocation = false,
+                        isUploadingProof = false,
+                        currentStep = ReportStep.LOCATION
+                    )
+                }
+                Log.d("ReportViewModel", "GPS capture finished. Moving to LOCATION step.")
+            } catch (t: Throwable) {
+                Log.e("ReportViewModel", "Critical error in captureLocation", t)
+                _uiState.update { 
+                    it.copy(
+                        isCapturingLocation = false, 
+                        isUploadingProof = false,
+                        errorMessage = "GPS Error: ${t.localizedMessage}. Please try again." 
+                    )
+                }
             }
         }
     }
@@ -84,17 +99,18 @@ class ReportViewModel(
         _uiState.update {
             it.copy(
                 isSubmitting = true,
-                submitStatusMessage = "Uploading evidence to Cloudinary...",
+                submitStatusMessage = "Uploading evidence to CityMind...",
                 errorMessage = null
             )
         }
 
+        val appContext = context.applicationContext
         viewModelScope.launch {
             val capLoc = state.capturedLocation ?: LocationData(0.0, 0.0)
             val repLoc = state.reportedLocation ?: capLoc
 
             val result = repository.createComplaint(
-                context = context,
+                context = appContext,
                 imageUri = uri,
                 category = state.category ?: "Civic Issue",
                 description = state.description,
@@ -140,6 +156,7 @@ data class ReportUiState(
     val reportedLocation: LocationData? = null,
     val locationSource: String = "gps",
     val isCapturingLocation: Boolean = false,
+    val isUploadingProof: Boolean = false,
     val aiAnalysis: AIAnalysis? = null,
     val isAnalyzing: Boolean = false,
     val description: String = "",
