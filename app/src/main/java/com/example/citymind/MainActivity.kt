@@ -10,16 +10,21 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.ui.Modifier
 import com.example.citymind.data.repository.ApiComplaintRepository
+import com.example.citymind.data.repository.NominatimGeocodingRepository
 import com.example.citymind.services.LocationService
 import com.example.citymind.services.MockAIService
 import com.example.citymind.ui.MainScreen
 import com.example.citymind.ui.theme.CitymindTheme
 import com.example.citymind.viewmodel.ComplaintViewModel
 import com.example.citymind.viewmodel.ReportViewModel
+import org.maplibre.android.MapLibre
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
+        // Initialize MapLibre
+        MapLibre.getInstance(this)
 
         // Request permissions early
         val requestPermissionLauncher = registerForActivityResult(
@@ -36,8 +41,9 @@ class MainActivity : ComponentActivity() {
         val repository = ApiComplaintRepository()
         val locationService = LocationService(this)
         val aiService = MockAIService()
+        val geocodingRepository = NominatimGeocodingRepository()
 
-        val reportViewModel = ReportViewModel(repository, locationService, aiService)
+        val reportViewModel = ReportViewModel(repository, locationService, aiService, geocodingRepository)
         val complaintViewModel = ComplaintViewModel(repository)
 
         setContent {

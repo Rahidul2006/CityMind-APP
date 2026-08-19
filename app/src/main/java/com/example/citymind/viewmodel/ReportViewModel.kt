@@ -6,6 +6,7 @@ import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.citymind.data.repository.ComplaintRepository
+import com.example.citymind.data.repository.GeocodingRepository
 import com.example.citymind.models.*
 import com.example.citymind.services.LocationService
 import com.example.citymind.services.MockAIService
@@ -18,7 +19,8 @@ import kotlinx.coroutines.launch
 class ReportViewModel(
     private val repository: ComplaintRepository,
     private val locationService: LocationService,
-    private val aiService: MockAIService
+    private val aiService: MockAIService,
+    private val geocodingRepository: GeocodingRepository
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(ReportUiState())
@@ -47,6 +49,7 @@ class ReportViewModel(
                         currentStep = ReportStep.LOCATION
                     )
                 }
+                location?.let { reverseGeocode(it) }
                 Log.d("ReportViewModel", "GPS capture finished. Moving to LOCATION step.")
             } catch (t: Throwable) {
                 Log.e("ReportViewModel", "Critical error in captureLocation", t)
@@ -63,6 +66,15 @@ class ReportViewModel(
 
     fun onLocationAdjusted(location: LocationData) {
         _uiState.update { it.copy(reportedLocation = location, locationSource = "manual_adjustment") }
+        reverseGeocode(location)
+    }
+
+    private fun reverseGeocode(location: LocationData) {
+        viewModelScope.launch {
+            geocodingRepository.reverseGeocode(location.latitude, location.longitude).onSuccess { address ->
+                _uiState.update { it.copy(address = address) }
+            }
+        }
     }
 
     fun proceedFromLocation() {
@@ -121,7 +133,7 @@ class ReportViewModel(
                 reportedLatitude = repLoc.latitude,
                 reportedLongitude = repLoc.longitude,
                 locationSource = state.locationSource,
-                address = "GPS Coordinates: ${repLoc.latitude}, ${repLoc.longitude}"
+                address = state.address.ifEmpty { "GPS Coordinates: ${repLoc.latitude}, ${repLoc.longitude}" }
             )
 
             result.onSuccess { createdComplaint ->
@@ -160,6 +172,7 @@ data class ReportUiState(
     val aiAnalysis: AIAnalysis? = null,
     val isAnalyzing: Boolean = false,
     val description: String = "",
+    val address: String = "",
     val isSubmitting: Boolean = false,
     val submitStatusMessage: String = "",
     val errorMessage: String? = null,

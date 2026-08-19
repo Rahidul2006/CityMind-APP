@@ -27,11 +27,8 @@ import com.example.citymind.ui.navigation.Screen
 import com.example.citymind.viewmodel.ReportViewModel
 import com.example.citymind.viewmodel.ReportStep
 import com.example.citymind.models.LocationData
+import com.example.citymind.ui.components.MapLibreView
 import com.example.citymind.ui.theme.*
-import com.google.maps.android.compose.*
-import com.google.android.gms.maps.model.CameraPosition
-import com.google.android.gms.maps.model.LatLng
-import com.google.android.gms.maps.CameraUpdateFactory
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -71,6 +68,7 @@ fun ReportScreen(
                     ReportStep.LOCATION -> LocationStep(
                         capturedLocation = uiState.capturedLocation,
                         reportedLocation = uiState.reportedLocation,
+                        address = uiState.address,
                         isCapturing = uiState.isCapturingLocation,
                         onLocationAdjusted = viewModel::onLocationAdjusted,
                         onProceed = viewModel::proceedFromLocation
@@ -235,43 +233,16 @@ fun PhotoStep(onPhotoCaptured: (Uri) -> Unit) {
 fun LocationStep(
     capturedLocation: LocationData?,
     reportedLocation: LocationData?,
+    address: String,
     isCapturing: Boolean,
     onLocationAdjusted: (LocationData) -> Unit,
     onProceed: () -> Unit
 ) {
-    val context = LocalContext.current
     val initialLocation = reportedLocation ?: LocationData(0.0, 0.0)
-    val cameraPositionState = rememberCameraPositionState {
-        position = CameraPosition.fromLatLngZoom(
-            LatLng(initialLocation.latitude, initialLocation.longitude),
-            17f
-        )
-    }
-
-    // Initialize Maps SDK renderer with current context
-    LaunchedEffect(Unit) {
-        try {
-            com.google.android.gms.maps.MapsInitializer.initialize(context)
-        } catch (e: Exception) {
-            e.printStackTrace()
-        }
-    }
-
-    // Animate map when GPS fix is acquired
-    LaunchedEffect(reportedLocation) {
-        reportedLocation?.let {
-            cameraPositionState.animate(
-                update = com.google.android.gms.maps.CameraUpdateFactory.newLatLngZoom(
-                    LatLng(it.latitude, it.longitude),
-                    17f
-                )
-            )
-        }
-    }
 
     Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
-        Text("Verify Location", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
-        Text("You can drag the marker to adjust location", style = MaterialTheme.typography.bodySmall, color = Blue)
+        Text("Where did you find the problem?", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+        Text("Location helps the maintenance team find the reported problem accurately.", style = MaterialTheme.typography.bodySmall, color = Blue)
         Spacer(Modifier.height(12.dp))
 
         if (isCapturing) {
@@ -289,56 +260,46 @@ fun LocationStep(
                 shape = MaterialTheme.shapes.large,
                 elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)
             ) {
-                GoogleMap(
+                MapLibreView(
                     modifier = Modifier.fillMaxSize(),
-                    cameraPositionState = cameraPositionState,
-                    properties = MapProperties(
-                        mapType = MapType.NORMAL,
-                        isMyLocationEnabled = context.checkSelfPermission(android.Manifest.permission.ACCESS_FINE_LOCATION) == android.content.pm.PackageManager.PERMISSION_GRANTED
-                    ),
-                    uiSettings = MapUiSettings(
-                        zoomControlsEnabled = true,
-                        myLocationButtonEnabled = true
-                    )
-                ) {
-                    reportedLocation?.let { loc ->
-                        val markerState = rememberMarkerState(position = LatLng(loc.latitude, loc.longitude))
-                        
-                        // Update marker position if location changes from GPS
-                        LaunchedEffect(loc.latitude, loc.longitude) {
-                            markerState.position = LatLng(loc.latitude, loc.longitude)
-                        }
-
-                        Marker(
-                            state = markerState,
-                            title = "Issue Spot",
-                            draggable = true
-                        )
-
-                        // If user finished dragging, update the reported location
-                        if (markerState.dragState == DragState.END) {
-                            LaunchedEffect(markerState.dragState) {
-                                onLocationAdjusted(loc.copy(
-                                    latitude = markerState.position.latitude,
-                                    longitude = markerState.position.longitude
-                                ))
-                            }
-                        }
+                    latitude = initialLocation.latitude,
+                    longitude = initialLocation.longitude,
+                    onLocationChanged = { lat, lng ->
+                        onLocationAdjusted(initialLocation.copy(latitude = lat, longitude = lng))
                     }
-                }
+                )
+            }
+
+            if (address.isNotEmpty()) {
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    text = address,
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
             }
 
             Spacer(Modifier.height(16.dp))
             LocationInfoCard(reportedLocation ?: capturedLocation)
 
             Spacer(Modifier.height(16.dp))
-            Button(
-                onClick = onProceed,
-                modifier = Modifier.fillMaxWidth().height(60.dp),
-                shape = MaterialTheme.shapes.large,
-                colors = ButtonDefaults.buttonColors(containerColor = Blue)
-            ) {
-                Text("Confirm Location", fontWeight = FontWeight.ExtraBold, fontSize = 18.sp)
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedButton(
+                    onClick = { capturedLocation?.let { onLocationAdjusted(it) } },
+                    modifier = Modifier.weight(1f).height(56.dp),
+                    shape = MaterialTheme.shapes.large
+                ) {
+                    Text("Current GPS")
+                }
+                Button(
+                    onClick = onProceed,
+                    modifier = Modifier.weight(1f).height(56.dp),
+                    shape = MaterialTheme.shapes.large,
+                    colors = ButtonDefaults.buttonColors(containerColor = Blue)
+                ) {
+                    Text("Confirm", fontWeight = FontWeight.Bold)
+                }
             }
         }
     }
