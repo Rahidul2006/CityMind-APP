@@ -6,6 +6,7 @@ import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.navigation.NavDestination.Companion.hierarchy
 import androidx.navigation.NavGraph.Companion.findStartDestination
@@ -17,8 +18,6 @@ import com.example.citymind.ui.home.HomeScreen
 import com.example.citymind.ui.report.ReportScreen
 import com.example.citymind.ui.complaints.ComplaintsScreen
 import com.example.citymind.ui.complaints.ComplaintDetailScreen
-import com.example.citymind.ui.nearby.NearbyScreen
-import com.example.citymind.ui.profile.ProfileScreen
 import com.example.citymind.ui.navigation.Screen
 import com.example.citymind.viewmodel.ReportViewModel
 import com.example.citymind.viewmodel.ComplaintViewModel
@@ -32,13 +31,13 @@ fun MainScreen(
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentDestination = navBackStackEntry?.destination
 
-    val items = listOf(
-        Triple(Screen.Home, "Home", Icons.Default.Home),
-        Triple(Screen.Report, "Report", Icons.Default.Add),
-        Triple(Screen.Complaints, "Complaints", Icons.Default.List),
-        Triple(Screen.Nearby, "Nearby", Icons.Default.LocationOn),
-        Triple(Screen.Profile, "Profile", Icons.Default.Person)
-    )
+    val items = remember {
+        listOf(
+            Triple(Screen.Home, "Home", Icons.Default.Home),
+            Triple(Screen.Report, "Report", Icons.Default.Add),
+            Triple(Screen.Complaints, "Complaints", Icons.Default.List),
+        )
+    }
 
     Scaffold(
         bottomBar = {
@@ -50,10 +49,15 @@ fun MainScreen(
                         selected = currentDestination?.hierarchy?.any { it.route == screen.route } == true,
                         onClick = {
                             navController.navigate(screen.route) {
+                                // Pop up to the start destination of the graph to
+                                // avoid building up a large stack of destinations
                                 popUpTo(navController.graph.findStartDestination().id) {
                                     saveState = true
                                 }
+                                // Avoid multiple copies of the same destination when
+                                // reselecting the same item
                                 launchSingleTop = true
+                                // Restore state when reselecting a previously selected item
                                 restoreState = true
                             }
                         }
@@ -70,17 +74,11 @@ fun MainScreen(
             composable(Screen.Home.route) { 
                 HomeScreen(navController, complaintViewModel) 
             }
-            composable(Screen.Report.route) { 
-                ReportScreen(navController, reportViewModel) 
+            composable(Screen.Report.route) {
+                ReportScreen(navController, reportViewModel)
             }
             composable(Screen.Complaints.route) { 
                 ComplaintsScreen(navController, complaintViewModel) 
-            }
-            composable(Screen.Nearby.route) { 
-                NearbyScreen(complaintViewModel) 
-            }
-            composable(Screen.Profile.route) { 
-                ProfileScreen() 
             }
             composable(Screen.ComplaintDetail.route) { backStackEntry ->
                 val id = backStackEntry.arguments?.getString("id") ?: ""

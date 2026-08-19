@@ -28,6 +28,10 @@ import com.example.citymind.viewmodel.ReportViewModel
 import com.example.citymind.viewmodel.ReportStep
 import com.example.citymind.models.LocationData
 import com.example.citymind.ui.theme.*
+import com.google.maps.android.compose.*
+import com.google.android.gms.maps.model.CameraPosition
+import com.google.android.gms.maps.model.LatLng
+import com.google.android.gms.maps.CameraUpdateFactory
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -37,6 +41,13 @@ fun ReportScreen(
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val context = LocalContext.current
+
+    // Reset the report state when entering this screen to ensure a fresh start
+    LaunchedEffect(Unit) {
+        if (uiState.currentStep == ReportStep.SUBMITTED) {
+            viewModel.reset()
+        }
+    }
 
     Scaffold(
         topBar = {
@@ -52,7 +63,7 @@ fun ReportScreen(
             )
         }
     ) { innerPadding ->
-        Box(modifier = Modifier.padding(innerPadding)) {
+        Box(modifier = Modifier.padding(innerPadding).fillMaxSize()) {
             Crossfade(targetState = uiState.currentStep, label = "ReportStep") { step ->
                 when (step) {
                     ReportStep.CATEGORY -> CategoryStep(onCategorySelected = viewModel::onCategorySelected)
@@ -84,6 +95,11 @@ fun ReportScreen(
                         }
                     )
                 }
+            }
+
+            // Cloudinary Upload Animation (Post-Capture)
+            if (uiState.isUploadingProof) {
+                CloudinaryUploadOverlay()
             }
 
             // Loading overlay during Cloudinary upload & MongoDB creation
@@ -223,32 +239,106 @@ fun LocationStep(
     onLocationAdjusted: (LocationData) -> Unit,
     onProceed: () -> Unit
 ) {
+    val context = LocalContext.current
+    val initialLocation = reportedLocation ?: LocationData(0.0, 0.0)
+    val cameraPositionState = rememberCameraPositionState {
+        position = CameraPosition.fromLatLngZoom(
+            LatLng(initialLocation.latitude, initialLocation.longitude),
+            17f
+        )
+    }
+
+    // Initialize Maps SDK renderer with current context
+    LaunchedEffect(Unit) {
+        try {
+            com.google.android.gms.maps.MapsInitializer.initialize(context)
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
+
+    // Animate map when GPS fix is acquired
+    LaunchedEffect(reportedLocation) {
+        reportedLocation?.let {
+            cameraPositionState.animate(
+                update = com.google.android.gms.maps.CameraUpdateFactory.newLatLngZoom(
+                    LatLng(it.latitude, it.longitude),
+                    17f
+                )
+            )
+        }
+    }
+
     Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
         Text("Verify Location", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
-        Spacer(Modifier.height(16.dp))
+        Text("You can drag the marker to adjust location", style = MaterialTheme.typography.bodySmall, color = Blue)
+        Spacer(Modifier.height(12.dp))
 
         if (isCapturing) {
-            CircularProgressIndicator(modifier = Modifier.align(Alignment.CenterHorizontally))
-            Spacer(Modifier.height(8.dp))
-            Text("Getting your exact GPS location...", modifier = Modifier.align(Alignment.CenterHorizontally))
+            Box(modifier = Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    CircularProgressIndicator(modifier = Modifier.size(64.dp), strokeWidth = 6.dp)
+                    Spacer(Modifier.height(24.dp))
+                    Text("Fetching GPS Location...", fontWeight = FontWeight.Bold, fontSize = 18.sp)
+                    Text("Ensuring high accuracy for reporting...", color = MaterialTheme.colorScheme.primary)
+                }
+            }
         } else {
-            Box(modifier = Modifier.weight(1f).fillMaxWidth().background(LightGray)) {
-                Column(modifier = Modifier.align(Alignment.Center), horizontalAlignment = Alignment.CenterHorizontally) {
-                    Icon(Icons.Default.LocationOn, contentDescription = null, tint = DangerRed, modifier = Modifier.size(48.dp))
-                    Text("GPS Coordinates Location", fontWeight = FontWeight.Bold)
-                    Text("${reportedLocation?.latitude ?: 0.0}, ${reportedLocation?.longitude ?: 0.0}")
+            Card(
+                modifier = Modifier.weight(1f).fillMaxWidth(),
+                shape = MaterialTheme.shapes.large,
+                elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)
+            ) {
+                GoogleMap(
+                    modifier = Modifier.fillMaxSize(),
+                    cameraPositionState = cameraPositionState,
+                    properties = MapProperties(
+                        mapType = MapType.NORMAL,
+                        isMyLocationEnabled = context.checkSelfPermission(android.Manifest.permission.ACCESS_FINE_LOCATION) == android.content.pm.PackageManager.PERMISSION_GRANTED
+                    ),
+                    uiSettings = MapUiSettings(
+                        zoomControlsEnabled = true,
+                        myLocationButtonEnabled = true
+                    )
+                ) {
+                    reportedLocation?.let { loc ->
+                        val markerState = rememberMarkerState(position = LatLng(loc.latitude, loc.longitude))
+                        
+                        // Update marker position if location changes from GPS
+                        LaunchedEffect(loc.latitude, loc.longitude) {
+                            markerState.position = LatLng(loc.latitude, loc.longitude)
+                        }
+
+                        Marker(
+                            state = markerState,
+                            title = "Issue Spot",
+                            draggable = true
+                        )
+
+                        // If user finished dragging, update the reported location
+                        if (markerState.dragState == DragState.END) {
+                            LaunchedEffect(markerState.dragState) {
+                                onLocationAdjusted(loc.copy(
+                                    latitude = markerState.position.latitude,
+                                    longitude = markerState.position.longitude
+                                ))
+                            }
+                        }
+                    }
                 }
             }
 
             Spacer(Modifier.height(16.dp))
-            LocationInfoCard(capturedLocation)
+            LocationInfoCard(reportedLocation ?: capturedLocation)
 
             Spacer(Modifier.height(16.dp))
             Button(
                 onClick = onProceed,
-                modifier = Modifier.fillMaxWidth().height(56.dp)
+                modifier = Modifier.fillMaxWidth().height(60.dp),
+                shape = MaterialTheme.shapes.large,
+                colors = ButtonDefaults.buttonColors(containerColor = Blue)
             ) {
-                Text("Confirm Location")
+                Text("Confirm Location", fontWeight = FontWeight.ExtraBold, fontSize = 18.sp)
             }
         }
     }
@@ -279,10 +369,42 @@ fun AIStep(isAnalyzing: Boolean) {
         verticalArrangement = Arrangement.Center
     ) {
         if (isAnalyzing) {
-            CircularProgressIndicator(modifier = Modifier.size(64.dp))
-            Spacer(Modifier.height(24.dp))
+            CircularProgressIndicator(modifier = Modifier.size(64.dp), color = Blue, strokeWidth = 6.dp)
+            Spacer(Modifier.height(32.dp))
             Text("🤖 AI Analysis in Progress...", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
             Text("Analyzing severity & recommended priority", style = MaterialTheme.typography.bodyMedium)
+            Text("Verifying evidence on Cloudinary...", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
+        }
+    }
+}
+
+@Composable
+fun CloudinaryUploadOverlay() {
+    Surface(
+        modifier = Modifier.fillMaxSize(),
+        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.9f)
+    ) {
+        Column(
+            modifier = Modifier.fillMaxSize(),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center
+        ) {
+            Box(contentAlignment = Alignment.Center) {
+                CircularProgressIndicator(
+                    modifier = Modifier.size(100.dp),
+                    strokeWidth = 8.dp,
+                    color = Blue
+                )
+                Icon(
+                    Icons.Default.Refresh,
+                    contentDescription = null,
+                    modifier = Modifier.size(48.dp),
+                    tint = Blue
+                )
+            }
+            Spacer(Modifier.height(32.dp))
+            Text("Processing Evidence", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.ExtraBold)
+            Text("Compressing and preparing proof...", style = MaterialTheme.typography.bodyMedium)
         }
     }
 }
@@ -293,20 +415,42 @@ fun DetailsStep(
     onDescriptionChanged: (String) -> Unit,
     onProceed: () -> Unit
 ) {
-    Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
-        Text("Describe the Issue", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
-        Spacer(Modifier.height(16.dp))
-        OutlinedTextField(
-            value = description,
-            onValueChange = onDescriptionChanged,
-            modifier = Modifier.fillMaxWidth().weight(1f),
-            placeholder = { Text("Example: Deep pothole causing traffic congestion near main road.") },
-            label = { Text("Description Details") }
-        )
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(16.dp)
+            .imePadding()
+    ) {
+        // Scrollable content area
+        Column(
+            modifier = Modifier
+                .weight(1f)
+                .verticalScroll(rememberScrollState())
+        ) {
+            Text(
+                "Describe the Issue",
+                style = MaterialTheme.typography.headlineSmall,
+                fontWeight = FontWeight.Bold
+            )
+            Spacer(Modifier.height(16.dp))
+            OutlinedTextField(
+                value = description,
+                onValueChange = onDescriptionChanged,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = 200.dp),
+                placeholder = { Text("Example: Deep pothole causing traffic congestion near main road.") },
+                label = { Text("Description Details") }
+            )
+        }
+
+        // Action button at the bottom
         Spacer(Modifier.height(16.dp))
         Button(
             onClick = onProceed,
-            modifier = Modifier.fillMaxWidth().height(56.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(56.dp),
             enabled = description.isNotBlank()
         ) {
             Text("Review Report")

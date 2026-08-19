@@ -2,6 +2,7 @@ package com.example.citymind.data.repository
 
 import android.content.Context
 import android.net.Uri
+import android.util.Log
 import com.example.citymind.data.remote.RetrofitClient
 import com.example.citymind.data.remote.dtos.ResolutionVerificationRequest
 import com.example.citymind.models.Complaint
@@ -12,6 +13,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOn
+import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.MultipartBody
 import okhttp3.RequestBody.Companion.asRequestBody
@@ -69,9 +71,11 @@ class ApiComplaintRepository : ComplaintRepository {
         reportedLongitude: Double,
         locationSource: String,
         address: String
-    ): Result<Complaint> {
-        return try {
+    ): Result<Complaint> = withContext(Dispatchers.IO) {
+        try {
+            Log.d("ApiRepository", "Starting image compression for URI: $imageUri")
             val compressedFile = ImageCompressor.compressImage(context, imageUri)
+            
             val requestFile = compressedFile.asRequestBody("image/jpeg".toMediaTypeOrNull())
             val imagePart = MultipartBody.Part.createFormData("image", compressedFile.name, requestFile)
 
@@ -93,6 +97,7 @@ class ApiComplaintRepository : ComplaintRepository {
             val locSourceBody = locationSource.toRequestBody(textMediaType)
             val addressBody = address.toRequestBody(textMediaType)
 
+            Log.d("ApiRepository", "Sending multipart request to CityMind API...")
             val response = apiService.createComplaint(
                 image = imagePart,
                 category = categoryBody,
@@ -112,32 +117,35 @@ class ApiComplaintRepository : ComplaintRepository {
                 if (dto != null) {
                     Result.success(dto.toDomainModel())
                 } else {
-                    Result.failure(Exception(response.body()?.message ?: "Complaint creation failed."))
+                    Result.failure(Exception(response.body()?.message ?: "Complaint creation failed: Body was empty."))
                 }
             } else {
                 val errorMsg = response.errorBody()?.string() ?: "Server returned error ${response.code()}"
+                Log.e("ApiRepository", "API Error: $errorMsg")
                 Result.failure(Exception(errorMsg))
             }
-        } catch (e: Exception) {
-            e.printStackTrace()
+        } catch (e: Throwable) {
+            Log.e("ApiRepository", "createComplaint failed", e)
             Result.failure(e)
         }
     }
 
     override suspend fun updateComplaintStatus(id: String, status: ComplaintStatus, note: String?) {
-        try {
-            val req = com.example.citymind.data.remote.dtos.StatusUpdateRequest(
-                status = status.name,
-                message = note ?: "Status updated to ${status.name}"
-            )
-            apiService.updateComplaintStatus(id, req)
-        } catch (e: Exception) {
-            e.printStackTrace()
+        withContext(Dispatchers.IO) {
+            try {
+                val req = com.example.citymind.data.remote.dtos.StatusUpdateRequest(
+                    status = status.name,
+                    message = note ?: "Status updated to ${status.name}"
+                )
+                apiService.updateComplaintStatus(id, req)
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
         }
     }
 
-    override suspend fun verifyResolution(id: String, verified: Boolean, message: String): Result<Complaint> {
-        return try {
+    override suspend fun verifyResolution(id: String, verified: Boolean, message: String): Result<Complaint> = withContext(Dispatchers.IO) {
+        try {
             val req = ResolutionVerificationRequest(resolved = verified, message = message)
             val response = apiService.verifyResolution(id, req)
             if (response.isSuccessful) {
@@ -145,7 +153,7 @@ class ApiComplaintRepository : ComplaintRepository {
                 if (dto != null) {
                     Result.success(dto.toDomainModel())
                 } else {
-                    Result.failure(Exception("Verification failed"))
+                    Result.failure(Exception("Verification failed: No data returned"))
                 }
             } else {
                 Result.failure(Exception("Server returned error ${response.code()}"))
@@ -159,8 +167,8 @@ class ApiComplaintRepository : ComplaintRepository {
         latitude: Double,
         longitude: Double,
         radius: Int
-    ): Result<List<Complaint>> {
-        return try {
+    ): Result<List<Complaint>> = withContext(Dispatchers.IO) {
+        try {
             val response = apiService.getNearbyComplaints(latitude, longitude, radius)
             if (response.isSuccessful) {
                 val dtoList = response.body()?.complaints ?: response.body()?.data ?: emptyList()

@@ -3,8 +3,6 @@ package com.example.citymind.ui.home
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Notifications
-import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
@@ -17,6 +15,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
+import androidx.navigation.NavGraph.Companion.findStartDestination
 import coil.compose.AsyncImage
 import com.example.citymind.ui.navigation.Screen
 import com.example.citymind.viewmodel.ComplaintViewModel
@@ -45,7 +44,13 @@ fun HomeScreen(
 
         item {
             ReportCTA {
-                navController.navigate(Screen.Report.route)
+                navController.navigate(Screen.Report.route) {
+                    popUpTo(navController.graph.findStartDestination().id) {
+                        saveState = true
+                    }
+                    launchSingleTop = true
+                    restoreState = true
+                }
             }
         }
 
@@ -96,14 +101,7 @@ fun Header() {
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
-        Row {
-            IconButton(onClick = {}) {
-                Icon(Icons.Default.Notifications, contentDescription = "Notifications")
-            }
-            IconButton(onClick = {}) {
-                Icon(Icons.Default.Person, contentDescription = "Profile")
-            }
-        }
+
     }
 }
 
